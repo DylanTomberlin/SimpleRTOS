@@ -5,58 +5,73 @@
 
 #include "Scheduler.h"
 #include "Task.h"
+#include "Tick.h"
 #include <stddef.h>
+#include <malloc.h>
 
 //global unscheduled tasks queue
-const TasksList *unscheduledTasks;
-const TasksList *scheduledTasks;
+Task *unscheduledTasks;
+Task *scheduledTasks;
+//TODO add unscheduled tail so ISR does not need to traverse entire linked list
 
-void CBScheduleTask(Data *scheduleTasksData)
+/*
+void CBScheduleTask(void *scheduleTasksData)
 {
 
 }
+*/
 
-void schedulerAddToQueue(Task *toBeQueued)
+void schedulerAddToQueue(Task *toBeQueued, uint32_t scheduleForMs)
 {
     if(!toBeQueued)      {return;}
+
+    toBeQueued->scheduledTime = scheduleForMs;
     if(!unscheduledTasks) 
     {
         unscheduledTasks = toBeQueued;
         return;
     }
 
-    TasksList *curr = unscheduledTasks;
-    while(curr->next != NULL)
+    Task *curr = unscheduledTasks;
+    while(curr->queueNext != NULL)
     {
-        curr = curr->next;
+        curr = curr->queueNext;
     }
     
-    curr->next = toBeQueued;
+    curr->queueNext = toBeQueued;
+    toBeQueued->queueNext = NULL;
 }
 
-void schedulerScheduleTask(Task *toBeScheduled, uint32_t scheduleFor)
+
+
+void schedulerScheduleTask(Task *toBeScheduled)
 {
     if(!toBeScheduled) {return;}
 
+/*
+    TasksList *newNode = malloc(sizeof(TasksList));
+    if(!newNode) {return;} //TODO: implement return error codes
+    newNode->currTask = toBeScheduled;
+*/
     if(!scheduledTasks)
     {
         scheduledTasks = toBeScheduled;
         return;
     }
 
-    TasksList *curr = scheduledTasks;
-    while (curr->next != NULL)
+    Task *curr = scheduledTasks;
+    while (curr->queueNext != NULL)
     {
-        if(curr->currTask !=NULL)
+        if(curr !=NULL)
         {
             //Place new task in order of next to execute, secondary sort by priority
-            if(curr->next->currTask->scheduledTime > toBeScheduled->scheduledTime 
-            || (curr->next->currTask->scheduledTime == toBeScheduled->scheduledTime && 
-            curr->next->currTask->priority))
+            if(curr->queueNext->scheduledTime > toBeScheduled->scheduledTime 
+            || (curr->queueNext->scheduledTime == toBeScheduled->scheduledTime && 
+            curr->queueNext->priority))
             {
-                //TODO: need to malloc space for taskList node for toBeScheduled
-                curr->next = toBeScheduled;
-                toBeScheduled->next = 
+                toBeScheduled->queueNext = curr->queueNext;
+                curr->queueNext = toBeScheduled;
+                return;
             }
         }
     }
@@ -64,5 +79,28 @@ void schedulerScheduleTask(Task *toBeScheduled, uint32_t scheduleFor)
 }
 void schedulerExecuteTask(Task *toBeExecuted)
 {
+    if(!toBeExecuted) {return;}
+    toBeExecuted->callBackPtr(toBeExecuted->dataPtr);
+}
 
+//runs in main loop every tick
+void schedulerRun()
+{
+    uint32_t systemTime = TickGetSystemTime();
+
+    //Immediately execute late tasks or are scheduled for this tick
+    while(scheduledTasks != NULL && scheduledTasks->scheduledTime <= systemTime)
+    {
+        Task *nextSceduled = scheduledTasks->queueNext;
+        schedulerExecuteTask(scheduledTasks);
+        scheduledTasks->queueNext = NULL;
+        scheduledTasks = nextSceduled;
+    }
+
+    //schedule queued tasks
+    while(unscheduledTasks)
+    {
+        Task *next = unscheduledTasks->queueNext;
+        schedulerScheduleTask(unscheduledTasks);
+    }
 }
