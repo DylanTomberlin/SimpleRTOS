@@ -93,11 +93,12 @@ void schedulerExecuteTask(Task *toBeExecuted)
 //runs in main loop every tick
 void schedulerRun()
 {
-    uint32_t systemTime = TickGetSystemTime();
+    uint32_t systemTime;
 
-    //Run until all queued and scheduled tasks have been executed
-    while(scheduledTasks && unscheduledTasks)
+    while (scheduledTasks && unscheduledTasks)
     {
+        
+        systemTime = TickGetSystemTime();
         //Immediately execute late tasks or are scheduled for this tick
         while(scheduledTasks != NULL && scheduledTasks->scheduledTime <= systemTime)
         {
@@ -105,6 +106,7 @@ void schedulerRun()
             schedulerExecuteTask(scheduledTasks);
             scheduledTasks->queueNext = NULL;
             scheduledTasks = nextSceduled;
+            systemTime = TickGetSystemTime();
         }
 
         //schedule queued tasks
