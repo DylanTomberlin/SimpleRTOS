@@ -11,6 +11,7 @@
 
 //global unscheduled tasks queue
 Task *unscheduledTasks;
+Task *unscheduledTail;
 Task *scheduledTasks;
 //TODO add unscheduled tail so ISR does not need to traverse entire linked list
 
@@ -29,9 +30,14 @@ void schedulerAddToQueue(Task *toBeQueued, uint32_t scheduleForMs)
     if(!unscheduledTasks) 
     {
         unscheduledTasks = toBeQueued;
+        unscheduledTail = toBeQueued;
         return;
     }
 
+    //TODO return error code if end of queue has a next pointer set
+    unscheduledTail->queueNext = toBeQueued;
+    unscheduledTail = toBeQueued;
+/*  Traverse entire linked list
     Task *curr = unscheduledTasks;
     while(curr->queueNext != NULL)
     {
@@ -40,6 +46,7 @@ void schedulerAddToQueue(Task *toBeQueued, uint32_t scheduleForMs)
     
     curr->queueNext = toBeQueued;
     toBeQueued->queueNext = NULL;
+*/
 }
 
 
@@ -88,19 +95,32 @@ void schedulerRun()
 {
     uint32_t systemTime = TickGetSystemTime();
 
-    //Immediately execute late tasks or are scheduled for this tick
-    while(scheduledTasks != NULL && scheduledTasks->scheduledTime <= systemTime)
+    //Run until all queued and scheduled tasks have been executed
+    while(scheduledTasks && unscheduledTasks)
     {
-        Task *nextSceduled = scheduledTasks->queueNext;
-        schedulerExecuteTask(scheduledTasks);
-        scheduledTasks->queueNext = NULL;
-        scheduledTasks = nextSceduled;
-    }
+        //Immediately execute late tasks or are scheduled for this tick
+        while(scheduledTasks != NULL && scheduledTasks->scheduledTime <= systemTime)
+        {
+            Task *nextSceduled = scheduledTasks->queueNext;
+            schedulerExecuteTask(scheduledTasks);
+            scheduledTasks->queueNext = NULL;
+            scheduledTasks = nextSceduled;
+        }
 
-    //schedule queued tasks
-    while(unscheduledTasks)
-    {
-        Task *next = unscheduledTasks->queueNext;
-        schedulerScheduleTask(unscheduledTasks);
+        //schedule queued tasks
+        while(unscheduledTasks)
+        {
+            Task *next = unscheduledTasks->queueNext;
+            schedulerScheduleTask(unscheduledTasks);
+            if(unscheduledTasks->queueNext == NULL)
+            {
+                unscheduledTasks = NULL;
+                unscheduledTail = NULL; 
+            } else
+            {
+                unscheduledTasks->queueNext = NULL;
+                unscheduledTasks = next;
+            }
+        }
     }
 }
